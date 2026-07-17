@@ -14,15 +14,54 @@ This is the Elixir port of [`warthog-ts`](https://github.com/warthog-network/war
 
 ## Installation
 
-Add `warthog_ex` to your list of dependencies in `mix.exs`:
+The package is **not yet published to Hex.pm**. Install it directly from the
+GitHub repository by adding the following to your `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:warthog_ex, "~> 0.1.0"}
+    {:warthog_ex, github: "warthog-network/warthog_ex"}
   ]
 end
 ```
+
+Then fetch and compile the dependency:
+
+```bash
+mix deps.get
+mix deps.compile
+```
+
+### Pinning to a specific tag or branch
+
+For reproducible builds, pin to a tagged release:
+
+```elixir
+def deps do
+  [
+    {:warthog_ex, git: "https://github.com/warthog-network/warthog_ex.git", tag: "v0.1.0"}
+  ]
+end
+```
+
+Or follow a specific branch (e.g. `main` for the latest development):
+
+```elixir
+def deps do
+  [
+    {:warthog_ex, git: "https://github.com/warthog-network/warthog_ex.git", branch: "main"}
+  ]
+end
+```
+
+After updating the dep spec, run `mix deps.get` again.
+
+### Requirements
+
+- Elixir `~> 1.19`
+- OTP `26+`
+- A working C toolchain (because `ex_secp256k1` ships a Rust NIF precompiled
+  for common platforms; falls back to source build otherwise).
 
 ## Quick start
 
