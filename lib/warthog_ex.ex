@@ -19,7 +19,7 @@ defmodule WarthogEx do
       ...> }
       iex> account = Account.from_private_key_hex(\"your-private-key-hex\")
       iex> recipient = Address.from_hex(\"0000000000000000000000000000000000000000de47c9b2\")
-      iex> api = %WarthogApi{base_url: \"https://api.warthog.example\"}
+      iex> api = WarthogApi.new()  # defaults to first known_nodes() entry (public testnet)
       iex> {:ok, %TransactionContext{} = ctx} = WarthogApi.create_transaction_context(api, RoundedFee.min(), NonceId.random())
       iex> tx = TransactionContext.transfer_wart(ctx, account, recipient, Wart.from_e8(100_000_000))
       iex> {:ok, _} = WarthogApi.submit_transaction(api, tx)

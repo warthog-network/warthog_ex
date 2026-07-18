@@ -52,7 +52,7 @@ account = Account.from_private_key_hex("your-private-key-hex")
 {:ok, recipient} = Address.from_hex("0000000000000000000000000000000000000000de47c9b2")
 
 # 3. Connect to API
-api = WarthogApi.new("https://api.warthog.example")
+api = WarthogApi.new()  # defaults to the first known_nodes() entry (public testnet)
 
 # 4. Create transaction context (fetches chain pin)
 {:ok, context} = WarthogApi.create_transaction_context(api, RoundedFee.min(), NonceId.random())

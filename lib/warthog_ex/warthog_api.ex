@@ -2,10 +2,14 @@ defmodule WarthogEx.WarthogApi do
   @moduledoc """
   Client for communicating with Warthog nodes.
 
-  ## Example
+  The default `base_url` is the first entry in `@known_nodes` (a public
+  testnet node). Override it for a local dev node:
 
-      iex> api = %WarthogEx.WarthogApi{base_url: \"https://api.warthog.example\"}
-      iex> {:ok, ctx} = WarthogEx.WarthogApi.create_transaction_context(api, WarthogEx.RoundedFee.min(), WarthogEx.NonceId.random())
+      # public testnet (default)
+      iex> api = WarthogEx.WarthogApi.new()
+
+      # local dev
+      iex> api = WarthogEx.WarthogApi.new("http://127.0.0.1:3100")
   """
 
   alias Jason.Encoder
@@ -34,7 +38,7 @@ defmodule WarthogEx.WarthogApi do
   @type chain_head_data :: %{chainHead: %{pinHash: String.t(), pinHeight: non_neg_integer()}}
   @type submit_transaction_data :: %{txHash: String.t()}
 
-  defstruct [:base_url]
+  defstruct base_url: hd(@known_nodes)
 
   @type t :: %__MODULE__{base_url: String.t()}
 
@@ -45,10 +49,14 @@ defmodule WarthogEx.WarthogApi do
   def known_nodes, do: @known_nodes
 
   @doc """
-  Create a new API client.
+  Create a new API client. Defaults to the first `known_nodes/0` entry
+  (public testnet); pass an explicit URL for a local dev node.
   """
+  @spec new() :: t()
   @spec new(node_url()) :: t()
-  def new(base_url) when is_binary(base_url), do: %WarthogApi{base_url: base_url}
+  def new(base_url \\ hd(@known_nodes)) when is_binary(base_url) do
+    %WarthogApi{base_url: base_url}
+  end
 
   @doc """
   Get the current chain head (latest pinned block).

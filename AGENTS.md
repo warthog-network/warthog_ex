@@ -4,7 +4,7 @@
 
 Warthog is a cryptocurrency. This library provides type-safe primitives for
 building and submitting transactions on the Warthog network. It is the
-Elixir port of [`warthog-ts`](../warthog-ts).
+Elixir port of [`warthog-ts`](https://github.com/warthog-network/warthog-ts).
 
 ## Important Constants
 
@@ -330,7 +330,7 @@ Client for communicating with Warthog nodes.
 alias WarthogEx.WarthogApi
 
 # Connect to a node
-api = WarthogApi.new("https://api.warthog.example")
+api = WarthogApi.new()  # defaults to the first known_nodes() entry (public testnet)
 
 # Create a transaction context (fetches chain pin)
 {:ok, ctx} = WarthogApi.create_transaction_context(api, fee, nonce)
@@ -371,7 +371,7 @@ account = Account.from_private_key_hex!("your-private-key-hex")
 recipient = Address.from_hex!("0000000000000000000000000000000000000000de47c9b2")
 
 # 3. Connect to the API
-api = WarthogApi.new("https://api.warthog.example")
+api = WarthogApi.new()  # defaults to the first known_nodes() entry (public testnet)
 
 # 4. Create a transaction context (fetches chain pin)
 {:ok, context} = WarthogApi.create_transaction_context(api, RoundedFee.min(), NonceId.random())

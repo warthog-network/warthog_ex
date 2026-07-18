@@ -32,7 +32,7 @@ existing_account =
 
 IO.puts("Loaded Address: #{existing_account.address.hex}")
 
-api = WarthogApi.new("http://127.0.0.1:3100")
+api = WarthogApi.new()  # defaults to the first known_nodes() entry (public testnet)
 
 submit = fn tx ->
   label = Map.get(tx, :type)
