@@ -1,8 +1,16 @@
 defmodule WarthogEx.AccountTest do
   use ExUnit.Case, async: true
 
+  import Bitwise
+
   alias WarthogEx.Account
   alias WarthogEx.Address
+
+  @private_key_hex "966a71a98bb5d13e9116c0dffa3f1a7877e45c6f563897b96cfd5c59bf0803e0"
+  @public_key_hex "02916a397088159baf27b3ce1271a859e3e6ea27db913a94086423e5867994e705"
+  @address_hex "3661579d61abde5837a8686dc4d65348a2fc61b1fe5f4093"
+
+  defp known_account, do: Account.from_private_key_hex!(@private_key_hex)
 
   test "Account.from_random generates a valid address" do
     account = Account.from_random()
@@ -15,15 +23,11 @@ defmodule WarthogEx.AccountTest do
   end
 
   test "Account.from_private_key_hex generates correct keys from a known private key" do
-    private_key_hex = "966a71a98bb5d13e9116c0dffa3f1a7877e45c6f563897b96cfd5c59bf0803e0"
-    assert {:ok, account} = Account.from_private_key_hex(private_key_hex)
+    assert {:ok, account} = Account.from_private_key_hex(@private_key_hex)
 
-    assert account.private_key_hex == private_key_hex
-
-    assert account.public_key_hex ==
-             "02916a397088159baf27b3ce1271a859e3e6ea27db913a94086423e5867994e705"
-
-    assert account.address.hex == "3661579d61abde5837a8686dc4d65348a2fc61b1fe5f4093"
+    assert account.private_key_hex == @private_key_hex
+    assert account.public_key_hex == @public_key_hex
+    assert account.address.hex == @address_hex
   end
 
   test "Account.from_private_key_hex!/1 raises on invalid input" do
@@ -38,8 +42,7 @@ defmodule WarthogEx.AccountTest do
   end
 
   test "Address.validate returns false for invalid checksum" do
-    private_key_hex = "966a71a98bb5d13e9116c0dffa3f1a7877e45c6f563897b96cfd5c59bf0803e0"
-    {:ok, account} = Account.from_private_key_hex(private_key_hex)
+    {:ok, account} = Account.from_private_key_hex(@private_key_hex)
     address = account.address.hex
     invalid = binary_part(address, 0, 40) <> "00000000"
 
@@ -56,18 +59,107 @@ defmodule WarthogEx.AccountTest do
     refute Address.validate(String.duplicate("g", 48))
   end
 
-  test "sign/2 produces a 65-byte signature" do
-    private_key_hex = "966a71a98bb5d13e9116c0dffa3f1a7877e45c6f563897b96cfd5c59bf0803e0"
-    account = Account.from_private_key_hex!(private_key_hex)
-    hash = :crypto.hash(:sha256, "hello world")
+  test "sign_bytes/2 returns a valid Signature65 tuple" do
+    account = known_account()
+    assert {:ok, {_r, _s, recid, signature_hex}} = Account.sign_bytes(account, "hello")
 
-    assert {:ok, {_r, _s, recid, signature_hex}} = Account.sign(account, hash)
     assert byte_size(Base.decode16!(signature_hex, case: :lower)) == 65
+    assert recid in 0..3
+    assert String.length(signature_hex) == 130
+  end
+
+  test "sign_bytes/2 is deterministic for the same input" do
+    account = known_account()
+    assert {:ok, sig1} = Account.sign_bytes(account, "hello")
+    assert {:ok, sig2} = Account.sign_bytes(account, "hello")
+
+    assert sig1 == sig2
+  end
+
+  test "sign_bytes/2 works on empty input" do
+    account = known_account()
+    assert {:ok, {_r, _s, recid, signature_hex}} = Account.sign_bytes(account, "")
+    assert String.length(signature_hex) == 130
     assert recid in 0..3
   end
 
-  test "sign!/2 raises on wrong hash length" do
-    account = Account.from_random()
-    assert_raise ArgumentError, fn -> Account.sign!(account, "short") end
+  test "sign_bytes/2 returns :error for non-binary input" do
+    account = known_account()
+    assert Account.sign_bytes(account, 123) == :error
+    assert Account.sign_bytes(account, nil) == :error
+  end
+
+  test "sign_bytes!/2 raises on non-binary input" do
+    account = known_account()
+    assert_raise ArgumentError, fn -> Account.sign_bytes!(account, 123) end
+  end
+
+  test "recover_public_key/2 round-trips a sign_bytes signature (tuple form)" do
+    account = known_account()
+    {:ok, {_r, _s, recid, signature_hex}} = Account.sign_bytes(account, "hello")
+
+    # Build the tuple form from the hex signature for the recovery call.
+    <<r::binary-size(32), s::binary-size(32), _::binary-size(1)>> =
+      Base.decode16!(signature_hex, case: :lower)
+
+    assert {:ok, recovered} = Account.recover_public_key("hello", {r, s, recid})
+    assert recovered == @public_key_hex
+  end
+
+  test "recover_address/2 round-trips a sign_bytes signature" do
+    account = known_account()
+    {:ok, {_r, _s, _recid, signature_hex}} = Account.sign_bytes(account, "hello")
+
+    assert {:ok, recovered} = Account.recover_address("hello", signature_hex)
+    assert recovered.hex == @address_hex
+  end
+
+  test "recover_public_key/2 returns a different key for a tampered message" do
+    account = known_account()
+    {:ok, {_r, _s, _recid, signature_hex}} = Account.sign_bytes(account, "hello")
+
+    assert {:ok, recovered} = Account.recover_public_key("hellp", signature_hex)
+    assert recovered != @public_key_hex
+  end
+
+  test "recover_public_key/2 is sensitive to the recovery id" do
+    account = known_account()
+    {:ok, {_r, _s, recid, signature_hex}} = Account.sign_bytes(account, "hello")
+
+    <<r::binary-size(32), s::binary-size(32), _::binary-size(1)>> =
+      Base.decode16!(signature_hex, case: :lower)
+
+    flipped_recid = bxor(recid, 1)
+    flipped_sig = Base.encode16(r <> s <> <<flipped_recid>>, case: :lower)
+
+    case Account.recover_public_key("hello", flipped_sig) do
+      {:ok, recovered} ->
+        assert recovered != @public_key_hex
+
+      :error ->
+        # Recovery failure is also acceptable — flipped recid may not
+        # correspond to any valid point on the curve for this signature.
+        :ok
+    end
+  end
+
+  test "recover_public_key/2 accepts the 130-char hex signature string" do
+    account = known_account()
+    {:ok, {_r, _s, _recid, signature_hex}} = Account.sign_bytes(account, "hello")
+
+    assert {:ok, recovered} = Account.recover_public_key("hello", signature_hex)
+    assert recovered == @public_key_hex
+  end
+
+  test "recover_public_key/2 returns :error on invalid signature" do
+    assert Account.recover_public_key("hello", "abcd") == :error
+    assert Account.recover_public_key("hello", String.duplicate("z", 130)) == :error
+
+    assert Account.recover_public_key("hello", {"bad", "bad", 5}) == :error
+  end
+
+  test "recover_public_key!/2 and recover_address!/2 raise on failure" do
+    assert_raise ArgumentError, fn -> Account.recover_public_key!("hello", "abcd") end
+    assert_raise ArgumentError, fn -> Account.recover_address!("hello", "abcd") end
   end
 end

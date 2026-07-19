@@ -25,6 +25,12 @@ defmodule WarthogEx.Account do
   alias WarthogEx.Account
   alias WarthogEx.Address
 
+  @type signature ::
+          {binary(), binary(), non_neg_integer(), String.t()}
+
+  @type signature_input ::
+          signature() | String.t()
+
   @type t :: %__MODULE__{
           private_key_hex: String.t(),
           public_key_hex: String.t(),
@@ -100,45 +106,91 @@ defmodule WarthogEx.Account do
   end
 
   @doc """
-  Get the address for the account.
-  """
-  @spec get_address(t()) :: Address.t()
-  def get_address(%Account{address: address}), do: address
+  Hash arbitrary bytes with SHA-256 and sign with the account's private key.
 
-  @doc """
-  Get the private key as a 64-character hex string (no `0x` prefix).
-  """
-  @spec get_private_key_hex(t()) :: String.t()
-  def get_private_key_hex(%Account{private_key_hex: hex}), do: hex
+  Produces a 65-byte signature (`r || s || recid`) using the same
+  secp256k1 configuration as transaction signing (low-s / canonical).
 
-  @doc """
-  Sign a 32-byte hash with the account's private key, producing a 65-byte
-  signature (`r || s || recid`).
-
-  Returns `{:ok, {r, s, recid, signature_hex}}`.
+  Returns `{:ok, {r, s, recid, signature_hex}} | :error`.
   """
-  @spec sign(t(), binary()) ::
-          {:ok, {binary(), binary(), non_neg_integer(), String.t()}} | :error
-  def sign(%Account{private_key_hex: hex}, hash)
-      when is_binary(hash) and byte_size(hash) == 32 do
-    with {:ok, private_key} <- Base.decode16(hex, case: :lower),
-         {:ok, {compact, recid}} <- ExSecp256k1.sign_compact(hash, private_key) do
-      <<r::binary-size(32), s::binary-size(32)>> = compact
-      signature_hex = Base.encode16(compact <> <<recid>>, case: :lower)
-      {:ok, {r, s, recid, signature_hex}}
+  @spec sign_bytes(t(), binary()) :: {:ok, signature()} | :error
+  def sign_bytes(%Account{private_key_hex: hex}, message)
+      when is_binary(hex) and byte_size(hex) == 64 and is_binary(message) do
+    with {:ok, private_key} <- Base.decode16(hex, case: :lower) do
+      sign_bytes_raw(private_key, message)
     end
   end
 
-  def sign(_, _), do: :error
+  def sign_bytes(_, _), do: :error
 
   @doc """
-  Like `sign/2` but raises on failure.
+  Like `sign_bytes/2` but raises on failure.
   """
-  @spec sign!(t(), binary()) :: {binary(), binary(), non_neg_integer(), String.t()}
-  def sign!(account, hash) do
-    case sign(account, hash) do
+  @spec sign_bytes!(t(), binary()) :: signature()
+  def sign_bytes!(account, message) do
+    case sign_bytes(account, message) do
       {:ok, sig} -> sig
-      :error -> raise ArgumentError, "failed to sign hash with account"
+      :error -> raise ArgumentError, "failed to sign message with account"
+    end
+  end
+
+  @doc """
+  Recover the compressed public key (hex, 66 chars) that produced the
+  given signature for the given message.
+
+  `signature` accepts either:
+  - a `{r, s, recid}` tuple (raw bytes for r, s; integer recid)
+  - a 130-char hex string (`r || s || recid`)
+  """
+  @spec recover_public_key(binary(), signature_input()) :: {:ok, String.t()} | :error
+  def recover_public_key(message, signature) when is_binary(message) do
+    with {:ok, {r, s, recid}} <- normalize_signature(signature) do
+      digest = :crypto.hash(:sha256, message)
+
+      with {:ok, uncompressed} <- ExSecp256k1.recover_compact(digest, r <> s, recid),
+           {:ok, compressed} <- ExSecp256k1.public_key_compress(uncompressed) do
+        {:ok, Base.encode16(compressed, case: :lower)}
+      end
+    end
+  end
+
+  def recover_public_key(_, _), do: :error
+
+  @doc """
+  Like `recover_public_key/2` but raises on failure.
+  """
+  @spec recover_public_key!(binary(), signature_input()) :: String.t()
+  def recover_public_key!(message, signature) do
+    case recover_public_key(message, signature) do
+      {:ok, pubkey_hex} -> pubkey_hex
+      :error -> raise ArgumentError, "failed to recover public key"
+    end
+  end
+
+  @doc """
+  Recover the Warthog address that produced the given signature for the
+  given message. Derived from the recovered public key via the same
+  `RIPEMD-160(SHA-256(pubkey)) + 4-byte checksum` pipeline the protocol
+  uses for addresses.
+  """
+  @spec recover_address(binary(), signature_input()) :: {:ok, Address.t()} | :error
+  def recover_address(message, signature) do
+    with {:ok, pubkey_hex} <- recover_public_key(message, signature),
+         {:ok, pubkey_bytes} <- Base.decode16(pubkey_hex, case: :lower) do
+      sha = :crypto.hash(:sha256, pubkey_bytes)
+      ripe = :crypto.hash(:ripemd160, sha)
+      Address.from_raw(Base.encode16(ripe, case: :lower))
+    end
+  end
+
+  @doc """
+  Like `recover_address/2` but raises on failure.
+  """
+  @spec recover_address!(binary(), signature_input()) :: Address.t()
+  def recover_address!(message, signature) do
+    case recover_address(message, signature) do
+      {:ok, address} -> address
+      :error -> raise ArgumentError, "failed to recover address"
     end
   end
 
@@ -162,4 +214,44 @@ defmodule WarthogEx.Account do
     {:ok, address} = Address.from_raw(Base.encode16(ripemd160_hash, case: :lower))
     address
   end
+
+  defp sign_bytes_raw(private_key, message) do
+    digest = :crypto.hash(:sha256, message)
+    sign_hash(private_key, digest)
+  end
+
+  defp sign_hash(private_key, digest) do
+    case ExSecp256k1.sign_compact(digest, private_key) do
+      {:ok, {compact, recid}} ->
+        <<r::binary-size(32), s::binary-size(32)>> = compact
+        signature_hex = Base.encode16(compact <> <<recid>>, case: :lower)
+        {:ok, {r, s, recid, signature_hex}}
+
+      error ->
+        error
+    end
+  end
+
+  defp normalize_signature({r, s, recid})
+       when is_binary(r) and is_binary(s) and is_integer(recid) and recid in 0..3 do
+    {:ok, {r, s, recid}}
+  end
+
+  defp normalize_signature(sig) when is_binary(sig) and byte_size(sig) == 130 do
+    case Base.decode16(sig, case: :lower) do
+      {:ok, <<r::binary-size(32), s::binary-size(32), recid_byte::binary-size(1)>>} ->
+        recid = :binary.decode_unsigned(recid_byte)
+
+        if recid in 0..3 do
+          {:ok, {r, s, recid}}
+        else
+          :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp normalize_signature(_), do: :error
 end

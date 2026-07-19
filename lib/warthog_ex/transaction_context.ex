@@ -60,7 +60,7 @@ defmodule WarthogEx.TransactionContext do
         address_bytes(to_addr.hex) <>
         u64be(wart.e8)
 
-    {:ok, {_r, _s, _recid, sig}} = Account.sign(account, sha256(binary))
+    {:ok, {_r, _s, _recid, sig}} = Account.sign_bytes(account, binary)
 
     %{
       type: "wartTransfer",
@@ -114,7 +114,7 @@ defmodule WarthogEx.TransactionContext do
         address_bytes(to_addr.hex) <>
         u64be(amount_e8)
 
-    {:ok, {_r, _s, _recid, sig}} = Account.sign(account, sha256(binary))
+    {:ok, {_r, _s, _recid, sig}} = Account.sign_bytes(account, binary)
 
     %{
       type: "tokenTransfer",
@@ -169,7 +169,7 @@ defmodule WarthogEx.TransactionContext do
         u64be(amount_e8) <>
         bin(Price.to_hex(limit))
 
-    {:ok, {_r, _s, _recid, sig}} = Account.sign(account, sha256(binary))
+    {:ok, {_r, _s, _recid, sig}} = Account.sign_bytes(account, binary)
 
     %{
       type: "limitSwap",
@@ -205,7 +205,7 @@ defmodule WarthogEx.TransactionContext do
         u64be(token_amount.amount) <>
         u64be(wart.e8)
 
-    {:ok, {_r, _s, _recid, sig}} = Account.sign(account, sha256(binary))
+    {:ok, {_r, _s, _recid, sig}} = Account.sign_bytes(account, binary)
 
     %{
       type: "liquidityDeposit",
@@ -238,7 +238,7 @@ defmodule WarthogEx.TransactionContext do
         bin(asset_hash) <>
         u64be(units.e8)
 
-    {:ok, {_r, _s, _recid, sig}} = Account.sign(account, sha256(binary))
+    {:ok, {_r, _s, _recid, sig}} = Account.sign_bytes(account, binary)
 
     %{
       type: "liquidityWithdrawal",
@@ -271,7 +271,7 @@ defmodule WarthogEx.TransactionContext do
         u32be(cancel_height) <>
         u32be(cancel_nonce_id.value)
 
-    {:ok, {_r, _s, _recid, sig}} = Account.sign(account, sha256(binary))
+    {:ok, {_r, _s, _recid, sig}} = Account.sign_bytes(account, binary)
 
     %{
       type: "cancelation",
@@ -310,7 +310,7 @@ defmodule WarthogEx.TransactionContext do
         <<decimals.decimals>> <>
         name_buffer
 
-    {:ok, {_r, _s, _recid, sig}} = Account.sign(account, sha256(binary))
+    {:ok, {_r, _s, _recid, sig}} = Account.sign_bytes(account, binary)
 
     %{
       type: "assetCreation",
@@ -338,8 +338,6 @@ defmodule WarthogEx.TransactionContext do
     <<raw::binary-size(40), _checksum::binary-size(8)>> = address
     Base.decode16!(raw, case: :mixed)
   end
-
-  defp sha256(data), do: :crypto.hash(:sha256, data)
 
   defp name_pad5(name) do
     padded = name <> <<0, 0, 0, 0, 0>>

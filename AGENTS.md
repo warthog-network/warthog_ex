@@ -253,6 +253,20 @@ account = Account.from_private_key_hex!("966a71a98bb5d13e9116c0dffa3f1a7877e45c6
 account.private_key_hex
 account.public_key_hex
 account.address
+
+# Sign arbitrary bytes (SHA-256 of the message, same scheme as tx sigs)
+{:ok, {r, s, recid, signature_hex}} = Account.sign_bytes(account, "hello world")
+{:ok, _} = Account.sign_bytes!(account, "hello world")
+# signature_hex is 130-char lowercase hex (r || s || recid)
+
+# Recover the compressed public key (hex, 66 chars) from a signature.
+# signature accepts either {r, s, recid} tuple or 130-char hex string.
+{:ok, pubkey_hex} = Account.recover_public_key("hello world", signature_hex)
+pubkey_hex = Account.recover_public_key!("hello world", signature_hex)
+
+# Recover the Warthog address that produced a signature.
+{:ok, address} = Account.recover_address("hello world", signature_hex)
+address = Account.recover_address!("hello world", signature_hex)
 ```
 
 ### HDWallet
@@ -412,6 +426,18 @@ mix test
 ```bash
 mix run examples/transactions.exs
 ```
+
+## Version bumping
+
+`just` recipes mirror the `core/defi` convention. Requires [`just`](https://github.com/casey/just).
+
+```bash
+just bump          # 0.1.0 -> 0.1.1   (patch)
+just bump-minor    # 0.1.1 -> 0.2.0   (minor)
+just bump-major    # 0.2.0 -> 1.0.0   (major)
+```
+
+The recipes edit `mix.exs` in place using `sed`. No extra dependencies.
 
 ## Building / Installing locally
 
