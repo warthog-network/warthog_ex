@@ -8,7 +8,7 @@ defmodule WarthogEx.MixProject do
       elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
       description: description(),
-      source_url: "https://github.com/warthog-network/warthog-ex",
+      source_url: "https://github.com/warthog-network/warthog_ex",
       docs: [
         main: "readme",
         extras: ["README.md"]
