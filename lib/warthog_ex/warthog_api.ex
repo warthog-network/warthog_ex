@@ -2,17 +2,22 @@ defmodule WarthogEx.WarthogApi do
   @moduledoc """
   Client for communicating with Warthog nodes.
 
-  The default `base_url` is the first entry in `@known_nodes` (a public
-  testnet node). Override it for a local dev node:
+  The client must be told which `/chain/head` API generation the node speaks,
+  because the two payload shapes are not interchangeable. See
+  `WarthogEx.api_version/0`.
 
-      # public testnet (default)
-      iex> api = WarthogEx.WarthogApi.new()
+  The first entry in `@known_nodes` is a public **main net** node (port 3001),
+  which serves the V1 API:
 
-      # local dev
-      iex> api = WarthogEx.WarthogApi.new("http://127.0.0.1:3100")
+      # public main net, V1 API (default URL)
+      iex> api = WarthogEx.WarthogApi.new(:v1)
+
+      # local dev node, V2 API
+      iex> api = WarthogEx.WarthogApi.new(:v2, "http://127.0.0.1:3100")
   """
 
   alias Jason.Encoder
+  alias WarthogEx.ChainHead
   alias WarthogEx.NonceId
   alias WarthogEx.RoundedFee
   alias WarthogEx.TransactionContext
@@ -35,12 +40,11 @@ defmodule WarthogEx.WarthogApi do
   @type api_success(t) :: {:ok, t}
   @type api_error :: {:error, code: integer(), error: String.t()}
 
-  @type chain_head_data :: %{chainHead: %{pinHash: String.t(), pinHeight: non_neg_integer()}}
   @type submit_transaction_data :: %{txHash: String.t()}
 
-  defstruct base_url: hd(@known_nodes)
+  defstruct [:base_url, :version]
 
-  @type t :: %__MODULE__{base_url: String.t()}
+  @type t :: %__MODULE__{base_url: String.t(), version: WarthogEx.api_version()}
 
   @doc """
   Known Warthog public nodes (best-effort, may include dead nodes).
@@ -49,21 +53,37 @@ defmodule WarthogEx.WarthogApi do
   def known_nodes, do: @known_nodes
 
   @doc """
-  Create a new API client. Defaults to the first `known_nodes/0` entry
-  (public testnet); pass an explicit URL for a local dev node.
+  Create a new API client.
+
+  `version` declares which `/chain/head` generation the node speaks and is
+  required, since the V1 and V2 payload shapes are not interchangeable.
+
+  `base_url` defaults to the first `known_nodes/0` entry.
   """
-  @spec new() :: t()
-  @spec new(node_url()) :: t()
-  def new(base_url \\ hd(@known_nodes)) when is_binary(base_url) do
-    %WarthogApi{base_url: base_url}
+  @spec new(WarthogEx.api_version()) :: t()
+  @spec new(WarthogEx.api_version(), node_url()) :: t()
+  def new(version, base_url \\ hd(@known_nodes))
+
+  def new(version, base_url) when version in [:v1, :v2] and is_binary(base_url) do
+    %WarthogApi{base_url: base_url, version: version}
   end
 
   @doc """
-  Get the current chain head (latest pinned block).
+  Get the current chain head.
+
+  Normalizes the V1 and V2 payload shapes into a single `WarthogEx.ChainHead`.
   """
-  @spec get_chain_head(t()) :: api_success(chain_head_data()) | api_error()
+  @spec get_chain_head(t()) :: api_success(ChainHead.t()) | api_error()
   def get_chain_head(%WarthogApi{} = api) do
-    request(api, "/chain/head")
+    with {:ok, data} <- request(api, "/chain/head") do
+      case ChainHead.parse(data, api.version) do
+        {:ok, head} ->
+          {:ok, head}
+
+        :error ->
+          {:error, code: -1, error: "Invalid #{api.version} chain head response"}
+      end
+    end
   end
 
   @doc """
@@ -83,13 +103,8 @@ defmodule WarthogEx.WarthogApi do
   @spec create_transaction_context(t(), RoundedFee.t(), NonceId.t()) ::
           {:ok, TransactionContext.t()} | api_error()
   def create_transaction_context(%WarthogApi{} = api, %RoundedFee{} = fee, %NonceId{} = nonce_id) do
-    case get_chain_head(api) do
-      {:ok, %{"chainHead" => %{"pinHash" => pin_hash, "pinHeight" => pin_height}}} ->
-        {:ok,
-         TransactionContext.new(%{pin_hash: pin_hash, pin_height: pin_height}, fee, nonce_id)}
-
-      {:error, _} = err ->
-        err
+    with {:ok, head} <- get_chain_head(api) do
+      {:ok, TransactionContext.new(head.pin, fee, nonce_id)}
     end
   end
 

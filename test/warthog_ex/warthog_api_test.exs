@@ -3,15 +3,26 @@ defmodule WarthogEx.WarthogApiTest do
 
   alias WarthogEx.WarthogApi
 
-  describe "new/1" do
-    test "without args uses the first known_nodes() entry (public testnet)" do
-      api = WarthogApi.new()
+  describe "new" do
+    test "without a URL uses the first known_nodes() entry" do
+      api = WarthogApi.new(:v1)
       assert api.base_url == hd(WarthogApi.known_nodes())
+      assert api.version == :v1
     end
 
     test "with explicit URL overrides the default" do
-      api = WarthogApi.new("http://127.0.0.1:3100")
-      assert api.base_url == "http://127.0.0.1:3100"
+      api = WarthogApi.new(:v2, "http://127.0.0.1:3200")
+      assert api.base_url == "http://127.0.0.1:3200"
+      assert api.version == :v2
+    end
+
+    test "the version is required and must be a known generation" do
+      # `new/0` no longer exists, and the old positional URL form is now a
+      # bad generation, so both fail loudly rather than mis-parsing.
+      # Called via apply/3 so the compiler does not warn on the missing new/0.
+      assert_raise UndefinedFunctionError, fn -> apply(WarthogApi, :new, []) end
+      assert_raise FunctionClauseError, fn -> WarthogApi.new("http://127.0.0.1:3100") end
+      assert_raise FunctionClauseError, fn -> WarthogApi.new(:v3) end
     end
   end
 

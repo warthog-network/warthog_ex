@@ -343,8 +343,10 @@ Client for communicating with Warthog nodes.
 ```elixir
 alias WarthogEx.WarthogApi
 
-# Connect to a node
-api = WarthogApi.new()  # defaults to the first known_nodes() entry (public testnet)
+# Connect to a node. The version declares which /chain/head generation the
+# node speaks and is required.
+api = WarthogApi.new(:v1)  # first known_nodes() entry (a public main net node)
+api = WarthogApi.new(:v2, "http://127.0.0.1:3100")  # local core/defi node
 
 # Create a transaction context (fetches chain pin)
 {:ok, ctx} = WarthogApi.create_transaction_context(api, fee, nonce)
@@ -352,11 +354,39 @@ api = WarthogApi.new()  # defaults to the first known_nodes() entry (public test
 # Submit a signed transaction
 {:ok, %{txHash: hash}} = WarthogApi.submit_transaction(api, tx)
 
-# Fetch chain head directly
-{:ok, %{"chainHead" => %{"pinHash" => h, "pinHeight" => n}}} = WarthogApi.get_chain_head(api)
+# Fetch chain head directly, normalized across both generations
+{:ok, head} = WarthogApi.get_chain_head(api)
+head.pin.pin_hash
+head.pin.pin_height
+head.height
+head.synced
 
 # Known public node URLs
 WarthogApi.known_nodes()
+```
+
+### API generations: V1 vs V2
+
+`/chain/head` returns the same C++ type on every branch, `Head { ChainHead
+chainHead; bool synced; }`, but the serializer differs:
+
+- **V1 API** (`core/master`, `core/dev`): a hand-written `to_json(API::Head&)`
+  flattens ChainHead into the top level. `{ hash, height, pinHash, pinHeight, ..., synced }`
+- **V2 API** (`core/defi`): glaze reflects the nesting. `{ chainHead: { hash, height, pinHash, pinHeight, ... }, synced }`
+
+The client is told which one to expect rather than sniffing the payload.
+`WarthogEx.ChainPin.parse/2` and `WarthogEx.ChainHead.parse/2` return `:error`
+when the payload does not match, and `get_chain_head/1` turns that into
+`{:error, code: -1, error: "Invalid <version> chain head response"}`.
+
+`ChainPin` and `ChainHead` also parse standalone, without a client:
+
+```elixir
+alias WarthogEx.{ChainHead, ChainPin}
+
+{:ok, head} = ChainHead.parse(payload, :v2)
+{:ok, pin} = ChainPin.parse(payload, :v1)
+ChainPin.pin_height_multiple()  # => 32
 ```
 
 ## Common Patterns
@@ -385,7 +415,7 @@ account = Account.from_private_key_hex!("your-private-key-hex")
 recipient = Address.from_hex!("0000000000000000000000000000000000000000de47c9b2")
 
 # 3. Connect to the API
-api = WarthogApi.new()  # defaults to the first known_nodes() entry (public testnet)
+api = WarthogApi.new(:v1)  # first known_nodes() entry (a public main net node)
 
 # 4. Create a transaction context (fetches chain pin)
 {:ok, context} = WarthogApi.create_transaction_context(api, RoundedFee.min(), NonceId.random())
@@ -451,7 +481,7 @@ Add to your project's `mix.exs`:
 ```elixir
 def deps do
   [
-    {:warthog_ex, "~> 0.1.0"}
+    {:warthog_ex, "~> 0.2.0"}
   ]
 end
 ```
@@ -466,3 +496,20 @@ end
   `{:ok, t()} | :error`) and `name!/1` (raises `ArgumentError`).
 - **Struct fields**: `account.address` and `account.privateKeyHex` are
   public struct fields, not methods like `getAddress()` / `getPrivateKeyHex()`.
+
+## Breaking changes
+
+### 0.2.0 — `/chain/head` V1 API handling
+
+- `WarthogApi.new/1` now takes a **required** version, `new(:v1)` or
+  `new(:v2)`. The old `WarthogApi.new()` and `WarthogApi.new(url)` forms no
+  longer exist and raise rather than silently mis-parsing. Use
+  `new(version, url)` for an explicit node.
+- `get_chain_head/1` returns `{:ok, %WarthogEx.ChainHead{}}` instead of the raw
+  decoded payload. Use `head.pin.pin_hash` / `head.pin.pin_height` /
+  `head.height` / `head.synced`.
+- `TransactionContext.chain_pin` is a `%WarthogEx.ChainPin{}` struct rather
+  than a bare map. Dot access is unchanged; only the type is different.
+- The old `create_transaction_context/3` pattern-matched `%{"chainHead" => ...}`
+  and raised `FunctionClauseError` against any V1 node. It now works against
+  both generations.

@@ -12,6 +12,7 @@ defmodule WarthogEx.TransactionContext do
 
   alias WarthogEx.Account
   alias WarthogEx.Address
+  alias WarthogEx.ChainPin
   alias WarthogEx.Funds
   alias WarthogEx.Liquidity
   alias WarthogEx.NonceId
@@ -21,14 +22,12 @@ defmodule WarthogEx.TransactionContext do
   alias WarthogEx.TransactionContext
   alias WarthogEx.Wart
 
-  @type chain_pin :: %{pin_hash: String.t(), pin_height: non_neg_integer()}
-
   @type transaction :: map()
 
   defstruct [:chain_pin, :fee, :nonce_id]
 
   @type t :: %__MODULE__{
-          chain_pin: chain_pin(),
+          chain_pin: ChainPin.t(),
           fee: RoundedFee.t(),
           nonce_id: NonceId.t()
         }
@@ -36,8 +35,8 @@ defmodule WarthogEx.TransactionContext do
   @doc """
   Create a new transaction context.
   """
-  @spec new(chain_pin(), RoundedFee.t(), NonceId.t()) :: t()
-  def new(%{} = chain_pin, %RoundedFee{} = fee, %NonceId{} = nonce_id) do
+  @spec new(ChainPin.t(), RoundedFee.t(), NonceId.t()) :: t()
+  def new(%ChainPin{} = chain_pin, %RoundedFee{} = fee, %NonceId{} = nonce_id) do
     %TransactionContext{chain_pin: chain_pin, fee: fee, nonce_id: nonce_id}
   end
 

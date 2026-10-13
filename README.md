@@ -51,8 +51,10 @@ account = Account.from_private_key_hex("your-private-key-hex")
 # 2. Prepare recipient
 {:ok, recipient} = Address.from_hex("0000000000000000000000000000000000000000de47c9b2")
 
-# 3. Connect to API
-api = WarthogApi.new()  # defaults to the first known_nodes() entry (public testnet)
+# 3. Connect to API. The version declares which /chain/head generation the
+#    node speaks. The first known_nodes() entry is a public main net node
+#    (port 3001), which serves the V1 API.
+api = WarthogApi.new(:v1)
 
 # 4. Create transaction context (fetches chain pin)
 {:ok, context} = WarthogApi.create_transaction_context(api, RoundedFee.min(), NonceId.random())

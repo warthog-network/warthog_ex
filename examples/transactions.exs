@@ -32,7 +32,10 @@ existing_account =
 
 IO.puts("Loaded Address: #{existing_account.address.hex}")
 
-api = WarthogApi.new()  # defaults to the first known_nodes() entry (public testnet)
+# The first known_nodes() entry is a public main net node (port 3001), which
+# serves the V1 API. For a local core/defi node use :v2, e.g.
+#   WarthogApi.new(:v2, "http://127.0.0.1:3100")
+api = WarthogApi.new(:v1)
 
 submit = fn tx ->
   label = Map.get(tx, :type)

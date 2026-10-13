@@ -3,6 +3,7 @@ defmodule WarthogEx.TransactionContextTest do
 
   alias WarthogEx.Account
   alias WarthogEx.Address
+  alias WarthogEx.ChainPin
   alias WarthogEx.Funds
   alias WarthogEx.Liquidity
   alias WarthogEx.NonceId
@@ -18,9 +19,9 @@ defmodule WarthogEx.TransactionContextTest do
     account = Account.from_private_key_hex!(private_key_hex)
     recipient = Address.from_hex!("0000000000000000000000000000000000000000de47c9b2")
 
-    chain_pin = %{
+    chain_pin = %ChainPin{
       pin_hash: String.duplicate("0", 64),
-      pin_height: 1
+      pin_height: 32
     }
 
     fee = RoundedFee.min()
@@ -39,7 +40,7 @@ defmodule WarthogEx.TransactionContextTest do
     tx = TransactionContext.transfer_wart(ctx, account, recipient, wart)
 
     assert tx.type == "wartTransfer"
-    assert tx.pinHeight == 1
+    assert tx.pinHeight == 32
     assert tx.nonceId == 0
     assert tx.feeE8 == 1
     assert tx.toAddr == recipient.hex
