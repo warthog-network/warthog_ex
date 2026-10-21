@@ -1,9 +1,10 @@
-defmodule WarthogEx.TransactionContextTest do
+defmodule WarthogEx.DeFiTransactionContextTest do
   use ExUnit.Case, async: true
 
   alias WarthogEx.Account
   alias WarthogEx.Address
   alias WarthogEx.ChainPin
+  alias WarthogEx.DeFiTransactionContext
   alias WarthogEx.Funds
   alias WarthogEx.Liquidity
   alias WarthogEx.NonceId
@@ -26,7 +27,7 @@ defmodule WarthogEx.TransactionContextTest do
 
     fee = RoundedFee.min()
     nonce_id = NonceId.from_number!(0)
-    ctx = TransactionContext.new(chain_pin, fee, nonce_id)
+    ctx = DeFiTransactionContext.new(chain_pin, fee, nonce_id)
 
     {:ok, ctx: ctx, account: account, recipient: recipient}
   end
@@ -48,6 +49,20 @@ defmodule WarthogEx.TransactionContextTest do
     assert byte_size(Base.decode16!(tx.signature65, case: :lower)) == 65
   end
 
+  test "the amount goes in wartE8, not amountE8", %{
+    ctx: ctx,
+    account: account,
+    recipient: recipient
+  } do
+    # On the DeFi node the name amountE8 means the liquidity share count, so
+    # the WART amount has to travel as wartE8.
+    wart = Wart.from_e8!(100_000_000)
+    tx = TransactionContext.transfer_wart(ctx, account, recipient, wart)
+
+    assert tx.wartE8 == 100_000_000
+    refute Map.has_key?(tx, :amountE8)
+  end
+
   test "transfer_asset builds a token transfer transaction", %{
     ctx: ctx,
     account: account,
@@ -55,7 +70,7 @@ defmodule WarthogEx.TransactionContextTest do
   } do
     asset_hash = "f45b113119c7f7c000234f1090d5d181ab60b8b24526f1edd2f563aa1ca329f2"
     amount = Funds.parse!("1000", TokenDecimals.wart())
-    tx = TransactionContext.transfer_asset(ctx, account, asset_hash, recipient, amount)
+    tx = DeFiTransactionContext.transfer_asset(ctx, account, asset_hash, recipient, amount)
 
     assert tx.type == "tokenTransfer"
     assert tx.assetHash == asset_hash
@@ -71,7 +86,7 @@ defmodule WarthogEx.TransactionContextTest do
   } do
     asset_hash = "f45b113119c7f7c000234f1090d5d181ab60b8b24526f1edd2f563aa1ca329f2"
     units = Liquidity.from_e8!(100)
-    tx = TransactionContext.transfer_liquidity(ctx, account, asset_hash, recipient, units)
+    tx = DeFiTransactionContext.transfer_liquidity(ctx, account, asset_hash, recipient, units)
 
     assert tx.type == "tokenTransfer"
     assert tx.isLiquidity == true
@@ -82,7 +97,7 @@ defmodule WarthogEx.TransactionContextTest do
     asset_hash = "f45b113119c7f7c000234f1090d5d181ab60b8b24526f1edd2f563aa1ca329f2"
     wart = Wart.from_e8!(100_000_000)
     price = Price.from_number_decimals!(1.0, %TokenDecimals{decimals: 4}, false)
-    tx = TransactionContext.buy(ctx, account, asset_hash, wart, price)
+    tx = DeFiTransactionContext.buy(ctx, account, asset_hash, wart, price)
 
     assert tx.type == "limitSwap"
     assert tx.isBuy == true
@@ -94,7 +109,7 @@ defmodule WarthogEx.TransactionContextTest do
     asset_hash = "f45b113119c7f7c000234f1090d5d181ab60b8b24526f1edd2f563aa1ca329f2"
     amount = Funds.parse!("1000", %TokenDecimals{decimals: 4})
     price = Price.from_number_decimals!(1.0, %TokenDecimals{decimals: 4}, false)
-    tx = TransactionContext.sell(ctx, account, asset_hash, amount, price)
+    tx = DeFiTransactionContext.sell(ctx, account, asset_hash, amount, price)
 
     assert tx.type == "limitSwap"
     assert tx.isBuy == false
@@ -105,9 +120,11 @@ defmodule WarthogEx.TransactionContextTest do
     asset_hash = "f45b113119c7f7c000234f1090d5d181ab60b8b24526f1edd2f563aa1ca329f2"
     token_amount = Funds.parse!("1000", %TokenDecimals{decimals: 4})
     wart = Wart.from_e8!(100_000_000)
-    tx = TransactionContext.deposit_liquidity(ctx, account, asset_hash, token_amount, wart)
+    tx = DeFiTransactionContext.deposit_liquidity(ctx, account, asset_hash, token_amount, wart)
 
     assert tx.type == "liquidityDeposit"
+    # The token amount travels as amountU64. amountE8 is the liquidity share
+    # count, which is what a withdrawal carries.
     assert tx.amountU64 == token_amount.amount
     assert tx.wartE8 == 100_000_000
   end
@@ -118,7 +135,7 @@ defmodule WarthogEx.TransactionContextTest do
   } do
     asset_hash = "f45b113119c7f7c000234f1090d5d181ab60b8b24526f1edd2f563aa1ca329f2"
     units = Liquidity.from_e8!(100)
-    tx = TransactionContext.withdraw_liquidity(ctx, account, asset_hash, units)
+    tx = DeFiTransactionContext.withdraw_liquidity(ctx, account, asset_hash, units)
 
     assert tx.type == "liquidityWithdrawal"
     assert tx.amountE8 == 100
@@ -126,7 +143,7 @@ defmodule WarthogEx.TransactionContextTest do
 
   test "cancel_transaction builds a cancelation", %{ctx: ctx, account: account} do
     cancel_nonce_id = NonceId.from_number!(1)
-    tx = TransactionContext.cancel_transaction(ctx, account, 0, cancel_nonce_id)
+    tx = DeFiTransactionContext.cancel_transaction(ctx, account, 0, cancel_nonce_id)
 
     assert tx.type == "cancelation"
     assert tx.cancelHeight == 0
@@ -136,7 +153,7 @@ defmodule WarthogEx.TransactionContextTest do
   test "create_assets builds an asset-creation transaction", %{ctx: ctx, account: account} do
     dec = TokenDecimals.new!(5)
     supply = Funds.parse!("10000", dec)
-    tx = TransactionContext.create_assets(ctx, account, supply, dec, "TOK2")
+    tx = DeFiTransactionContext.create_assets(ctx, account, supply, dec, "TOK2")
 
     assert tx.type == "assetCreation"
     assert tx.decimals == 5
@@ -161,19 +178,35 @@ defmodule WarthogEx.TransactionContextTest do
 
     txs = [
       TransactionContext.transfer_wart(ctx, account, recipient, wart),
-      TransactionContext.transfer_asset(ctx, account, asset_hash, recipient, amount),
-      TransactionContext.transfer_liquidity(ctx, account, asset_hash, recipient, units),
-      TransactionContext.buy(ctx, account, asset_hash, wart, price),
-      TransactionContext.sell(ctx, account, asset_hash, token_amount, price),
-      TransactionContext.deposit_liquidity(ctx, account, asset_hash, token_amount, wart),
-      TransactionContext.withdraw_liquidity(ctx, account, asset_hash, units),
-      TransactionContext.cancel_transaction(ctx, account, 0, cancel_nonce_id),
-      TransactionContext.create_assets(ctx, account, supply, dec, "TOK2")
+      DeFiTransactionContext.transfer_asset(ctx, account, asset_hash, recipient, amount),
+      DeFiTransactionContext.transfer_liquidity(ctx, account, asset_hash, recipient, units),
+      DeFiTransactionContext.buy(ctx, account, asset_hash, wart, price),
+      DeFiTransactionContext.sell(ctx, account, asset_hash, token_amount, price),
+      DeFiTransactionContext.deposit_liquidity(ctx, account, asset_hash, token_amount, wart),
+      DeFiTransactionContext.withdraw_liquidity(ctx, account, asset_hash, units),
+      DeFiTransactionContext.cancel_transaction(ctx, account, 0, cancel_nonce_id),
+      DeFiTransactionContext.create_assets(ctx, account, supply, dec, "TOK2")
     ]
 
     for tx <- txs do
       sig_bytes = Base.decode16!(tx.signature65, case: :lower)
       assert byte_size(sig_bytes) == 65
     end
+  end
+
+  test "both families sign the same bytes for a transfer", %{
+    ctx: ctx,
+    account: account,
+    recipient: recipient
+  } do
+    # The signed bytes are identical, only the JSON around them differs, so a
+    # signature produced for one family is valid for the other.
+    wart = Wart.from_e8!(100_000_000)
+    legacy_ctx = WarthogEx.LegacyTransactionContext.new(ctx.chain_pin, ctx.fee, ctx.nonce_id)
+
+    legacy = TransactionContext.transfer_wart(legacy_ctx, account, recipient, wart)
+    defi = TransactionContext.transfer_wart(ctx, account, recipient, wart)
+
+    assert legacy.signature65 == defi.signature65
   end
 end

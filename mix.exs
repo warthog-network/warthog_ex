@@ -4,7 +4,7 @@ defmodule WarthogEx.MixProject do
   def project do
     [
       app: :warthog_ex,
-      version: "0.2.0",
+      version: "0.3.0",
       elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
       description: description(),
@@ -29,7 +29,10 @@ defmodule WarthogEx.MixProject do
 
     Provides type-safe primitives for building and submitting transactions
     on the Warthog network. This is the Elixir port of the `warthog-ts`
-    TypeScript library, supporting the full native DeFi transaction set
+    TypeScript library. The two node families are separate APIs, so there
+    is a client and a transaction context for each: the legacy node
+    (core/master, core/dev) takes one kind of transaction, a transfer, and
+    the DeFi node (core/defi) takes the full native DeFi transaction set
     (`wartTransfer`, `tokenTransfer`, `assetCreation`, `limitSwap`,
     `liquidityDeposit`, `liquidityWithdrawal`, `cancelation`).
     """

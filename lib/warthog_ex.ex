@@ -11,18 +11,18 @@ defmodule WarthogEx do
       iex> alias WarthogEx.{
       ...>   Account,
       ...>   Address,
+      ...>   LegacyApi,
       ...>   RoundedFee,
       ...>   Wart,
       ...>   NonceId,
-      ...>   WarthogApi,
       ...>   TransactionContext
       ...> }
       iex> account = Account.from_private_key_hex(\"your-private-key-hex\")
       iex> recipient = Address.from_hex(\"0000000000000000000000000000000000000000de47c9b2\")
-      iex> api = WarthogApi.new(:v1)  # first known_nodes() entry, which is a main net node
-      iex> {:ok, %TransactionContext{} = ctx} = WarthogApi.create_transaction_context(api, RoundedFee.min(), NonceId.random())
+      iex> api = LegacyApi.new()  # first known legacy node, which is a main net node
+      iex> {:ok, %WarthogEx.LegacyTransactionContext{} = ctx} = LegacyApi.create_transaction_context(api, RoundedFee.min(), NonceId.random())
       iex> tx = TransactionContext.transfer_wart(ctx, account, recipient, Wart.from_e8(100_000_000))
-      iex> {:ok, _} = WarthogApi.submit_transaction(api, tx)
+      iex> {:ok, _} = LegacyApi.submit_transaction(api, tx)
 
   ## Modules
 
@@ -40,8 +40,14 @@ defmodule WarthogEx do
     * `WarthogEx.HDWallet` — BIP-44 hierarchical deterministic wallet
     * `WarthogEx.ChainPin` — proposed (height, hash) pin for transaction building
     * `WarthogEx.ChainHead` — normalized `/chain/head` view
-    * `WarthogEx.TransactionContext` — transaction builder
-    * `WarthogEx.WarthogApi` — HTTP client for Warthog nodes
+    * `WarthogEx.TransactionContext` — the builder both node families share
+    * `WarthogEx.LegacyTransactionContext` — transaction builder for the legacy node
+    * `WarthogEx.DeFiTransactionContext` — transaction builder for the DeFi node
+    * `WarthogEx.Api` — HTTP plumbing shared by the node clients
+    * `WarthogEx.LegacyApi` — client for the legacy node
+    * `WarthogEx.DeFiApi` — client for the DeFi node
+    * `WarthogEx.DeFiWartBalance` — WART balance on the DeFi node
+    * `WarthogEx.TokenBalance` — token balance on the DeFi node
   """
 
   @doc """

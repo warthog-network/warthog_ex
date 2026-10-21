@@ -2,15 +2,20 @@
 
 An Elixir library for the [Warthog](https://warthog.network) cryptocurrency.
 
-This is the Elixir port of [`warthog-ts`](https://github.com/warthog-network/warthog-ts) and provides type-safe primitives for building and submitting transactions on the Warthog network, including the full native DeFi transaction set:
+This is the Elixir port of [`warthog-ts`](https://github.com/warthog-network/warthog-ts) and provides type-safe primitives for building and submitting transactions on the Warthog network.
 
-- `wartTransfer`
-- `tokenTransfer`
-- `assetCreation`
-- `limitSwap`
-- `liquidityDeposit`
-- `liquidityWithdrawal`
-- `cancelation`
+The two node families are separate APIs, so there is a client and a transaction context for each:
+
+- The **legacy node** (`core/master`, `core/dev`) accepts one kind of transaction, a transfer.
+- The **DeFi node** (`core/defi`) accepts the full native DeFi transaction set:
+
+  - `wartTransfer`
+  - `tokenTransfer`
+  - `assetCreation`
+  - `limitSwap`
+  - `liquidityDeposit`
+  - `liquidityWithdrawal`
+  - `cancelation`
 
 ## Installation
 
@@ -38,10 +43,10 @@ mix deps.compile
 alias WarthogEx.{
   Account,
   Address,
+  LegacyApi,
   RoundedFee,
   Wart,
   NonceId,
-  WarthogApi,
   TransactionContext
 }
 
@@ -51,19 +56,19 @@ account = Account.from_private_key_hex("your-private-key-hex")
 # 2. Prepare recipient
 {:ok, recipient} = Address.from_hex("0000000000000000000000000000000000000000de47c9b2")
 
-# 3. Connect to API. The version declares which /chain/head generation the
-#    node speaks. The first known_nodes() entry is a public main net node
-#    (port 3001), which serves the V1 API.
-api = WarthogApi.new(:v1)
+# 3. Connect to a node. The legacy node takes one kind of transaction, a
+#    transfer. The first known legacy node is a public main net node
+#    (port 3001).
+api = LegacyApi.new()
 
 # 4. Create transaction context (fetches chain pin)
-{:ok, context} = WarthogApi.create_transaction_context(api, RoundedFee.min(), NonceId.random())
+{:ok, context} = LegacyApi.create_transaction_context(api, RoundedFee.min(), NonceId.random())
 
 # 5. Build a WART transfer
 tx = TransactionContext.transfer_wart(context, account, recipient, Wart.from_e8(100_000_000) |> elem(1))
 
 # 6. Submit
-{:ok, %{txHash: hash}} = WarthogApi.submit_transaction(api, tx)
+{:ok, %{txHash: hash}} = LegacyApi.submit_transaction(api, tx)
 ```
 
 ## Modules
@@ -82,8 +87,16 @@ tx = TransactionContext.transfer_wart(context, account, recipient, Wart.from_e8(
 | `WarthogEx.Price` | Normalized mantissa/exponent prices |
 | `WarthogEx.Account` | secp256k1 wallet account |
 | `WarthogEx.HDWallet` | BIP-44 hierarchical deterministic wallet |
-| `WarthogEx.TransactionContext` | Transaction builder (all 7 types) |
-| `WarthogEx.WarthogApi` | HTTP client for Warthog nodes |
+| `WarthogEx.ChainPin` | Proposed (height, hash) pin for transaction building |
+| `WarthogEx.ChainHead` | Normalized `/chain/head` view |
+| `WarthogEx.TransactionContext` | The builder both node families share |
+| `WarthogEx.LegacyTransactionContext` | Transaction builder for the legacy node |
+| `WarthogEx.DeFiTransactionContext` | Transaction builder for the DeFi node |
+| `WarthogEx.Api` | HTTP plumbing shared by the node clients |
+| `WarthogEx.LegacyApi` | Client for the legacy node |
+| `WarthogEx.DeFiApi` | Client for the DeFi node |
+| `WarthogEx.DeFiWartBalance` | WART balance on the DeFi node |
+| `WarthogEx.TokenBalance` | Token balance on the DeFi node |
 
 ### Account
 
@@ -160,11 +173,23 @@ Derivation path: `m/44'/2070'/0'/0/{index}` (Warthog coin type `2070`).
 
 ### TransactionContext
 
-The context is obtained via `WarthogApi.create_transaction_context/3`. Each method builds and signs a transaction for the matching type:
+`WarthogEx.TransactionContext` is a protocol carrying the one builder both node families have, `transfer_wart/4`. The contexts themselves are separate modules, because the two families accept different transaction sets:
+
+| Context | Node | Builders |
+|---|---|---|
+| `WarthogEx.LegacyTransactionContext` | `core/master`, `core/dev` | `transfer_wart/4` only |
+| `WarthogEx.DeFiTransactionContext` | `core/defi` | all nine |
+
+A legacy context cannot build a limit swap, because that builder does not exist on it. Code that only sends WART can hold either context and call the protocol:
+
+```elixir
+WarthogEx.TransactionContext.transfer_wart(ctx, account, recipient, wart)
+```
+
+The DeFi-only builders live on `WarthogEx.DeFiTransactionContext`:
 
 | Method | Transaction type |
 |---|---|
-| `transfer_wart/4` | `wartTransfer` |
 | `transfer_asset/5` | `tokenTransfer` (asset) |
 | `transfer_liquidity/5` | `tokenTransfer` (liquidity) |
 | `buy/5` | `limitSwap` (buy) |
@@ -174,7 +199,34 @@ The context is obtained via `WarthogApi.create_transaction_context/3`. Each meth
 | `cancel_transaction/4` | `cancelation` |
 | `create_assets/5` | `assetCreation` |
 
-All return a signed transaction map ready for `WarthogApi.submit_transaction/2`.
+All return a signed transaction map ready for `submit_transaction/2`.
+
+### The amount field follows the node family
+
+The legacy node reads a transfer's amount from `amountE8`, and its payload carries no `type` at all. The DeFi node reads it from `wartE8`, and on that node the name `amountE8` means the liquidity share count. Both families sign the same bytes for a transfer, so a signature made for one is valid for the other.
+
+### Node clients and balances
+
+```elixir
+alias WarthogEx.{Api, DeFiApi, LegacyApi}
+
+legacy = LegacyApi.new()      # a public main net node
+defi = DeFiApi.new()          # a public DeFi node
+
+Api.known_nodes_legacy()
+Api.known_nodes_defi()
+
+# The legacy node reports one number: the confirmed balance.
+{:ok, wart} = LegacyApi.get_wart_balance(legacy, address)
+
+# The DeFi node reports the total, what is locked in open limit orders and
+# what is locked by transactions in the mempool.
+{:ok, balance} = DeFiApi.get_wart_balance(defi, address)
+{:ok, free} = DeFiWartBalance.free(balance)
+
+# A token balance, the DeFi node only.
+{:ok, token} = DeFiApi.get_token_balance(defi, address, asset_hash)
+```
 
 ## Error handling convention
 

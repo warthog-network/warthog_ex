@@ -8,15 +8,18 @@
 alias WarthogEx.{
   Account,
   Address,
+  Api,
+  DeFiApi,
+  DeFiTransactionContext,
   Funds,
+  LegacyApi,
   Liquidity,
   NonceId,
   Price,
   RoundedFee,
   TokenDecimals,
   TransactionContext,
-  Wart,
-  WarthogApi
+  Wart
 }
 
 account = Account.from_random()
@@ -32,14 +35,15 @@ existing_account =
 
 IO.puts("Loaded Address: #{existing_account.address.hex}")
 
-# The first known_nodes() entry is a public main net node (port 3001), which
-# serves the V1 API. For a local core/defi node use :v2, e.g.
-#   WarthogApi.new(:v2, "http://127.0.0.1:3100")
-api = WarthogApi.new(:v1)
+# The two node families are separate APIs, so they get a client each. The
+# legacy node (core/master, core/dev) takes one kind of transaction, a
+# transfer. The DeFi node (core/defi) takes nine.
+legacy_api = LegacyApi.new()
+defi_api = DeFiApi.new()
 
-submit = fn tx ->
-  label = Map.get(tx, :type)
-  result = WarthogApi.submit_transaction(api, tx)
+submit = fn api, tx ->
+  label = Map.get(tx, :type, "transfer")
+  result = Api.submit_transaction(api, tx)
 
   case result do
     {:ok, %{txHash: hash}} ->
@@ -51,80 +55,109 @@ submit = fn tx ->
   end
 end
 
-run_examples = fn ->
-  {:ok, ctx} =
-    WarthogApi.create_transaction_context(api, RoundedFee.min(), NonceId.from_number!(0))
+# A WART transfer on the legacy node. The payload carries no type, and the
+# amount travels as amountE8.
+legacy_recipient = Address.from_hex!("0000000000000000000000000000000000000000de47c9b2")
+wart = Wart.from_e8!(100_000_000)
 
-  recipient = Address.from_hex!("0000000000000000000000000000000000000000de47c9b2")
-  asset = "f45b113119c7f7c000234f1090d5d181ab60b8b24526f1edd2f563aa1ca329f2"
-  wart = Wart.from_e8!(100_000_000)
-  dec4 = TokenDecimals.new!(4)
-  price = Price.from_number_decimals!(1.0, dec4, false)
-  dec5 = TokenDecimals.new!(5)
+{:ok, legacy_ctx} =
+  LegacyApi.create_transaction_context(legacy_api, RoundedFee.min(), NonceId.from_number!(0))
 
-  # WART transfer
-  submit.(TransactionContext.transfer_wart(ctx, existing_account, recipient, wart))
+submit.(legacy_api, TransactionContext.transfer_wart(legacy_ctx, existing_account, legacy_recipient, wart))
 
-  # Asset transfer (transfer regular tokens)
-  ctx = %{ctx | nonce_id: NonceId.from_number!(2)}
-  submit.(
-    TransactionContext.transfer_asset(
-      ctx,
-      existing_account,
-      asset,
-      recipient,
-      Funds.parse!("1000", TokenDecimals.wart())
-    )
+# The DeFi transactions. On that node the amount of a WART transfer travels
+# as wartE8, and amountE8 means the liquidity share count.
+{:ok, ctx} =
+  DeFiApi.create_transaction_context(defi_api, RoundedFee.min(), NonceId.from_number!(0))
+
+recipient = Address.from_hex!("0000000000000000000000000000000000000000de47c9b2")
+asset = "f45b113119c7f7c000234f1090d5d181ab60b8b24526f1edd2f563aa1ca329f2"
+dec4 = TokenDecimals.new!(4)
+price = Price.from_number_decimals!(1.0, dec4, false)
+dec5 = TokenDecimals.new!(5)
+
+# WART transfer
+submit.(defi_api, TransactionContext.transfer_wart(ctx, existing_account, recipient, wart))
+
+# Asset transfer (transfer regular tokens)
+ctx = %{ctx | nonce_id: NonceId.from_number!(2)}
+submit.(
+  defi_api,
+  DeFiTransactionContext.transfer_asset(
+    ctx,
+    existing_account,
+    asset,
+    recipient,
+    Funds.parse!("1000", TokenDecimals.wart())
   )
+)
 
-  # Liquidity transfer
-  ctx = %{ctx | nonce_id: NonceId.from_number!(3)}
-  submit.(
-    TransactionContext.transfer_liquidity(
-      ctx,
-      existing_account,
-      asset,
-      recipient,
-      Liquidity.from_e8!(100)
-    )
+# Liquidity transfer
+ctx = %{ctx | nonce_id: NonceId.from_number!(3)}
+submit.(
+  defi_api,
+  DeFiTransactionContext.transfer_liquidity(
+    ctx,
+    existing_account,
+    asset,
+    recipient,
+    Liquidity.from_e8!(100)
   )
+)
 
-  # Limit buy
-  ctx = %{ctx | nonce_id: NonceId.from_number!(5)}
-  IO.puts("Price hex: #{Price.to_hex(price)}")
-  submit.(TransactionContext.buy(ctx, existing_account, asset, wart, price))
+# Limit buy
+ctx = %{ctx | nonce_id: NonceId.from_number!(5)}
+IO.puts("Price hex: #{Price.to_hex(price)}")
+submit.(defi_api, DeFiTransactionContext.buy(ctx, existing_account, asset, wart, price))
 
-  # Limit sell
-  ctx = %{ctx | nonce_id: NonceId.from_number!(6)}
-  submit.(
-    TransactionContext.sell(ctx, existing_account, asset, Funds.parse!("1000", dec4), price)
+# Limit sell
+ctx = %{ctx | nonce_id: NonceId.from_number!(6)}
+submit.(
+  defi_api,
+  DeFiTransactionContext.sell(ctx, existing_account, asset, Funds.parse!("1000", dec4), price)
+)
+
+# Liquidity deposit
+ctx = %{ctx | nonce_id: NonceId.from_number!(7)}
+submit.(
+  defi_api,
+  DeFiTransactionContext.deposit_liquidity(
+    ctx,
+    existing_account,
+    asset,
+    Funds.parse!("1000", dec4),
+    wart
   )
+)
 
-  # Liquidity deposit
-  ctx = %{ctx | nonce_id: NonceId.from_number!(7)}
-  submit.(
-    TransactionContext.deposit_liquidity(
-      ctx,
-      existing_account,
-      asset,
-      Funds.parse!("1000", dec4),
-      wart
-    )
+# Liquidity withdrawal
+ctx = %{ctx | nonce_id: NonceId.from_number!(8)}
+submit.(
+  defi_api,
+  DeFiTransactionContext.withdraw_liquidity(
+    ctx,
+    existing_account,
+    asset,
+    Liquidity.from_e8!(100)
   )
+)
 
-  # Liquidity withdrawal
-  ctx = %{ctx | nonce_id: NonceId.from_number!(8)}
-  submit.(
-    TransactionContext.withdraw_liquidity(ctx, existing_account, asset, Liquidity.from_e8!(100))
+# Cancelation
+ctx = %{ctx | nonce_id: NonceId.from_number!(9)}
+submit.(
+  defi_api,
+  DeFiTransactionContext.cancel_transaction(ctx, existing_account, 0, NonceId.from_number!(1))
+)
+
+# Asset creation
+ctx = %{ctx | nonce_id: NonceId.from_number!(10)}
+submit.(
+  defi_api,
+  DeFiTransactionContext.create_assets(
+    ctx,
+    existing_account,
+    Funds.parse!("10000", dec5),
+    dec5,
+    "TOK2"
   )
-
-  # Cancelation
-  ctx = %{ctx | nonce_id: NonceId.from_number!(9)}
-  submit.(TransactionContext.cancel_transaction(ctx, existing_account, 0, NonceId.from_number!(1)))
-
-  # Asset creation
-  ctx = %{ctx | nonce_id: NonceId.from_number!(10)}
-  submit.(TransactionContext.create_assets(ctx, existing_account, Funds.parse!("10000", dec5), dec5, "TOK2"))
-end
-
-run_examples.()
+)

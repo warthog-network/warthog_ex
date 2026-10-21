@@ -25,6 +25,20 @@ defmodule WarthogEx.FundsTest do
     end
   end
 
+  describe "from_amount/1" do
+    test "builds funds from an integer amount" do
+      assert {:ok, %Funds{amount: 11_230}} = Funds.from_amount(11_230)
+    end
+
+    test "rejects a negative amount" do
+      assert Funds.from_amount(-1) == :error
+    end
+
+    test "rejects an amount above the 64-bit maximum" do
+      assert Funds.from_amount(WarthogEx.max_u64() + 1) == :error
+    end
+  end
+
   describe "from_parsed_funds/2" do
     test "converts parsed funds with 4 decimals" do
       pf = %ParsedFunds{val: 1123, decimal_places: 3}

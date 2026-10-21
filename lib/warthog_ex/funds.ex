@@ -45,6 +45,34 @@ defmodule WarthogEx.Funds do
   end
 
   @doc """
+  Create `Funds` from an integer amount.
+
+  The amount is in the token's smallest unit, so it needs no decimals: this
+  is the way to build one from a value a node reported.
+
+  Returns `{:ok, %Funds{}}` if valid, otherwise `:error`.
+  """
+  @spec from_amount(non_neg_integer()) :: {:ok, t()} | :error
+  def from_amount(amount) when is_integer(amount) do
+    if amount < 0 or amount > WarthogEx.max_u64() do
+      :error
+    else
+      {:ok, %Funds{amount: amount}}
+    end
+  end
+
+  @doc """
+  Like `from_amount/1` but raises on invalid input.
+  """
+  @spec from_amount!(non_neg_integer()) :: t()
+  def from_amount!(amount) do
+    case from_amount(amount) do
+      {:ok, funds} -> funds
+      :error -> raise ArgumentError, "invalid funds amount: #{inspect(amount)}"
+    end
+  end
+
+  @doc """
   Convert a `ParsedFunds` into `Funds` at the given decimal precision.
 
   Returns `{:ok, %Funds{}}` if valid, otherwise `:error`.
