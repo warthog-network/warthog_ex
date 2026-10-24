@@ -77,10 +77,22 @@ defmodule WarthogEx.Api do
 
   @doc """
   Submit a signed transaction to the node.
+
+  The node answers with `{"code": 0, "data": {"txHash": "..."}}`. The hash is
+  checked rather than assumed, so a response that does not carry one is
+  reported as an error instead of being passed off as a success.
   """
-  @spec submit_transaction(t(), map()) :: api_success(map()) | api_error()
+  @spec submit_transaction(t(), map()) :: api_success(%{String.t() => term()}) | api_error()
   def submit_transaction(%Api{} = api, tx) do
-    request(api, "/transaction/add", method: :post, body: tx)
+    with {:ok, data} <- request(api, "/transaction/add", method: :post, body: tx) do
+      case data do
+        %{"txHash" => tx_hash} when is_binary(tx_hash) ->
+          {:ok, %{"txHash" => tx_hash}}
+
+        _ ->
+          {:error, code: -1, error: "Invalid transaction add response"}
+      end
+    end
   end
 
   @doc """

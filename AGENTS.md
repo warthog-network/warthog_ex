@@ -370,6 +370,10 @@ The shared HTTP plumbing: the request, the chain head fetch and the
 transaction submission. The node lists are split the same way as the
 clients: `Api.known_nodes_legacy/0` and `Api.known_nodes_defi/0`.
 
+`Api.request/3` returns `{:ok, term()}`: the payload is not typed, because
+nothing has checked it yet. A caller that needs a typed value parses the
+result with the `parse` function of the relevant module.
+
 ### LegacyApi
 **File:** `lib/warthog_ex/legacy_api.ex`
 
