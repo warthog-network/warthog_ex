@@ -40,6 +40,7 @@ defmodule WarthogEx do
     * `WarthogEx.HDWallet` — BIP-44 hierarchical deterministic wallet
     * `WarthogEx.ChainPin` — proposed (height, hash) pin for transaction building
     * `WarthogEx.ChainHead` — normalized `/chain/head` view
+    * `WarthogEx.NodeVersion` — the version a node reports about itself
     * `WarthogEx.TransactionContext` — the builder both node families share
     * `WarthogEx.LegacyTransactionContext` — transaction builder for the legacy node
     * `WarthogEx.DeFiTransactionContext` — transaction builder for the DeFi node

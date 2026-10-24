@@ -96,6 +96,27 @@ defmodule WarthogEx.Api do
   end
 
   @doc """
+  Fetch the node's version from whichever endpoint serves it.
+
+  Every node family reports the same five fields in the same flat shape, so
+  the parsing is shared. Only the path differs, and that is what the caller
+  passes in.
+  """
+  @spec get_node_version(t(), String.t()) ::
+          api_success(WarthogEx.NodeVersion.t()) | api_error()
+  def get_node_version(%Api{} = api, path) do
+    with {:ok, data} <- request(api, path) do
+      case WarthogEx.NodeVersion.parse(data) do
+        {:ok, version} ->
+          {:ok, version}
+
+        :error ->
+          {:error, code: -1, error: "Invalid node version response"}
+      end
+    end
+  end
+
+  @doc """
   Perform a request against the node API.
 
   The response envelope is `{"code": 0, "data": ...}` on success and

@@ -374,6 +374,45 @@ clients: `Api.known_nodes_legacy/0` and `Api.known_nodes_defi/0`.
 nothing has checked it yet. A caller that needs a typed value parses the
 result with the `parse` function of the relevant module.
 
+### NodeVersion
+**File:** `lib/warthog_ex/node_version.ex`
+
+The version a node reports about itself. `NodeVersion.parse/1` returns
+`{:ok, %NodeVersion{}}` or `:error`, and `NodeVersion.parse!/1` raises.
+
+```elixir
+alias WarthogEx.NodeVersion
+
+{:ok, version} = NodeVersion.parse(%{
+  "name" => "v0.10.3 \"dd054a2\"",
+  "major" => 0,
+  "minor" => 10,
+  "patch" => 3,
+  "commit" => "dd054a2"
+})
+
+version.name     # "v0.10.3 \"dd054a2\""
+version.major    # 0
+version.minor    # 10
+version.patch    # 3
+version.commit   # "dd054a2"
+
+# The dotted triple, for comparisons
+NodeVersion.version(version)  # "0.10.3"
+```
+
+**The path differs per family, the payload does not.** The legacy node
+(core/master, core/dev) serves the version on `/tools/version`; the DeFi node
+(core/defi) serves it on `/version`. Both report the same five fields in the
+same flat shape, so there is one parser and one shared fetch helper
+(`Api.get_node_version/2`), and each client only states its own path. This is
+unlike `/chain/head`, which differs in shape between the two generations and
+so needs an `api_version` argument.
+
+Do not confuse this with `GET /tools/info`, which the SDK does not call. It
+is absent on core/master, private on core/defi, and its shape differs between
+core/dev (flat) and core/defi (nested glaze `NodeInfoResult`).
+
 ### LegacyApi
 **File:** `lib/warthog_ex/legacy_api.ex`
 
@@ -402,6 +441,9 @@ head.synced
 
 # The legacy node reports one number: the confirmed balance.
 {:ok, wart} = LegacyApi.get_wart_balance(api, address)
+
+# Get the version of the node.
+{:ok, version} = LegacyApi.get_node_version(api)
 ```
 
 ### DeFiApi
@@ -427,6 +469,9 @@ api = DeFiApi.new("http://127.0.0.1:3101")
 # A token balance. The DeFi node only, the legacy node has no tokens.
 {:ok, token} = DeFiApi.get_token_balance(api, address, asset_hash)
 {:ok, free} = WarthogEx.TokenBalance.free(token)
+
+# Get the version of the node.
+{:ok, version} = DeFiApi.get_node_version(api)
 ```
 
 ### API generations: V1 vs V2

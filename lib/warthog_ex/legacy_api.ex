@@ -56,6 +56,16 @@ defmodule WarthogEx.LegacyApi do
   def submit_transaction(api, tx), do: Api.submit_transaction(api, tx)
 
   @doc """
+  Get the version of the node.
+
+  The legacy node serves it on `/tools/version`.
+  """
+  @spec get_node_version(Api.t()) :: Api.api_success(WarthogEx.NodeVersion.t()) | Api.api_error()
+  def get_node_version(%Api{} = api) do
+    Api.get_node_version(api, "/tools/version")
+  end
+
+  @doc """
   Get the WART balance of an account.
 
   The legacy node reports one number: the confirmed balance. It has no limit

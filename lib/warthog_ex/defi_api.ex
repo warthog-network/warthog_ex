@@ -55,6 +55,17 @@ defmodule WarthogEx.DeFiApi do
   def submit_transaction(api, tx), do: Api.submit_transaction(api, tx)
 
   @doc """
+  Get the version of the node.
+
+  The DeFi node serves it on `/version`, not on `/tools/version` like the
+  legacy node does. The payload is the same either way.
+  """
+  @spec get_node_version(Api.t()) :: Api.api_success(WarthogEx.NodeVersion.t()) | Api.api_error()
+  def get_node_version(%Api{} = api) do
+    Api.get_node_version(api, "/version")
+  end
+
+  @doc """
   Get the WART balance of an account.
 
   The DeFi node reports the balance three ways: what the account owns, what

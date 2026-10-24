@@ -89,6 +89,7 @@ tx = TransactionContext.transfer_wart(context, account, recipient, Wart.from_e8(
 | `WarthogEx.HDWallet` | BIP-44 hierarchical deterministic wallet |
 | `WarthogEx.ChainPin` | Proposed (height, hash) pin for transaction building |
 | `WarthogEx.ChainHead` | Normalized `/chain/head` view |
+| `WarthogEx.NodeVersion` | The version a node reports about itself |
 | `WarthogEx.TransactionContext` | The builder both node families share |
 | `WarthogEx.LegacyTransactionContext` | Transaction builder for the legacy node |
 | `WarthogEx.DeFiTransactionContext` | Transaction builder for the DeFi node |
@@ -226,6 +227,25 @@ Api.known_nodes_defi()
 
 # A token balance, the DeFi node only.
 {:ok, token} = DeFiApi.get_token_balance(defi, address, asset_hash)
+```
+
+### Node version
+
+Ask a node which version it is running. Both families report the same
+fields, on different paths.
+
+```elixir
+{:ok, version} = LegacyApi.get_node_version(legacy)  # /tools/version
+{:ok, version} = DeFiApi.get_node_version(defi)      # /version
+
+version.name     # "v0.10.3 \"dd054a2\"", the version string with the commit
+version.major    # 0
+version.minor    # 10
+version.patch    # 3
+version.commit   # "dd054a2"
+
+# The dotted triple, for comparisons
+WarthogEx.NodeVersion.version(version)  # "0.10.3"
 ```
 
 ## Error handling convention
