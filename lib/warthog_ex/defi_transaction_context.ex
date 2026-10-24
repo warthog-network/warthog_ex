@@ -105,7 +105,7 @@ defmodule WarthogEx.DeFiTransactionContext do
     token_transfer_internal(ctx, account, asset_hash, true, to_addr, units.e8)
   end
 
-  defp token_transfer_internal(ctx, account, asset_hash, is_liquidity, to_addr, amount_e8) do
+  defp token_transfer_internal(ctx, account, asset_hash, is_liquidity, to_addr, amount_u64) do
     binary =
       TransactionBytes.bin(ctx.chain_pin.pin_hash) <>
         TransactionBytes.u32be(ctx.chain_pin.pin_height) <>
@@ -115,7 +115,7 @@ defmodule WarthogEx.DeFiTransactionContext do
         TransactionBytes.bin(asset_hash) <>
         <<if(is_liquidity, do: 1, else: 0)>> <>
         TransactionBytes.address_bytes(to_addr.hex) <>
-        TransactionBytes.u64be(amount_e8)
+        TransactionBytes.u64be(amount_u64)
 
     {:ok, {_r, _s, _recid, sig}} = Account.sign_bytes(account, binary)
 
@@ -127,7 +127,7 @@ defmodule WarthogEx.DeFiTransactionContext do
       assetHash: asset_hash,
       isLiquidity: is_liquidity,
       toAddr: to_addr.hex,
-      amountU64: amount_e8,
+      amountU64: amount_u64,
       signature65: sig
     }
   end
@@ -160,7 +160,7 @@ defmodule WarthogEx.DeFiTransactionContext do
     limit_swap_internal(ctx, account, asset_hash, false, token_amount, limit)
   end
 
-  defp limit_swap_internal(ctx, account, asset_hash, is_buy, amount_e8, limit) do
+  defp limit_swap_internal(ctx, account, asset_hash, is_buy, amount_u64, limit) do
     binary =
       TransactionBytes.bin(ctx.chain_pin.pin_hash) <>
         TransactionBytes.u32be(ctx.chain_pin.pin_height) <>
@@ -169,7 +169,7 @@ defmodule WarthogEx.DeFiTransactionContext do
         TransactionBytes.u64be(ctx.fee.e8) <>
         TransactionBytes.bin(asset_hash) <>
         <<if(is_buy, do: 1, else: 0)>> <>
-        TransactionBytes.u64be(amount_e8) <>
+        TransactionBytes.u64be(amount_u64) <>
         TransactionBytes.bin(Price.to_hex(limit))
 
     {:ok, {_r, _s, _recid, sig}} = Account.sign_bytes(account, binary)
@@ -181,7 +181,7 @@ defmodule WarthogEx.DeFiTransactionContext do
       feeE8: ctx.fee.e8,
       assetHash: asset_hash,
       isBuy: is_buy,
-      amountU64: amount_e8,
+      amountU64: amount_u64,
       limit: Price.to_hex(limit),
       signature65: sig
     }
